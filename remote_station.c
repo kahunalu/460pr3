@@ -23,6 +23,12 @@ volatile int auto_mode        = 0;
 volatile int man_move_avail   = 0;
 volatile int avoid_move_avail = 0;
 
+#define STRAIGHT  32768
+#define FORWARD   250
+#define BACKWARD  -250
+#define TURN      150
+#define STILL     0
+
 /* Create loop function which executes while scheduler sleeps
  *
  */
@@ -30,24 +36,49 @@ void loop(){
   while(1){};
 }
 
-void control_roomba(int velocity, int radius) {
-  write_serial(DRIVE);
-  write_serial(HIGH_BYTE(velocity));
-  write_serial(LOW_BYTE(velocity));
-  write_serial(HIGH_BYTE(radius));
-  write_serial(LOW_BYTE(radius));
+void drive_roomba(int16_t velocity, int16_t radius) {
+  uart0_sendbyte(DRIVE);
+  uart0_sendbyte(velocity>>8);
+  uart0_sendbyte(velocity);
+  uart0_sendbyte(radius>>8);
+  uart0_sendbyte(radius);
 }
 
 void auto_move(){
-
+  drive_roomba(STILL, STRAIGHT);
 }
 
 void avoid_move(){
-
+  
 }
 
 void man_move(){
+  int radius    = 0;
+  int velocity  = 0;
+  
+  if(servo_x > 700){
+    //uart0_sendstr("forward");
+    velocity = FORWARD;
+  }else if(servo_x < 300){
+    //uart0_sendstr("backward");
+    velocity = BACKWARD;
+  }else{
+    //uart0_sendstr("still");
+    velocity = STILL;
+  }
 
+  if(servo_y > 700){
+    //uart0_sendstr(" right\n");
+    radius =  -TURN;
+  }else if(servo_y < 300){
+    //uart0_sendstr(" left\n");
+    radius = TURN;
+  }else{
+    //uart0_sendstr(" straight\n");
+    radius = STRAIGHT;
+  }
+
+  drive_roomba(velocity, radius);
 }
 
 void control_roomba(){
@@ -96,12 +127,12 @@ void packet_recv() {
   laser_val = atoi(token);
 
   // If the value is greater than a range 
-  if(servo_x<300||servo_x<700||servo_y<300||servo_y>700){
-    man_move_avail = 1;
-    auto_mode      = 0;
-  }else{
+  if(servo_x>300 && servo_x<700 && servo_y>300 && servo_y<700){
     man_move_avail = 0;
     auto_mode      = 1;
+  }else{
+    man_move_avail = 1;
+    auto_mode      = 0;
   }
 
   // Fire laser if signaled
