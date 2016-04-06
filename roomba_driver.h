@@ -42,7 +42,4 @@ typedef enum _br {
 void init();
 void drive(int velocity, int radius);
 void dock();
-void get_data();
-bool check_power(unsigned int *power);
-bool check_power_capacity(unsigned int *power);
-void power_off();
+void roomba_data_request();

@@ -40,14 +40,11 @@ void wake_up() {
 	_delay_ms(100);
 }
 
-void flash(){
-	int i;
-	for(i = 0; i<5; i++){
-		PORTC = 0xff;
-		_delay_ms(100);	
-		PORTC = 0x00;
-		_delay_ms(100);
-	}
+void roomba_data_request(uint8_t request1, uint8_t request2) {
+	Roomba_Send_Byte(QUERYLIST);
+	Roomba_Send_Byte(2);
+	Roomba_Send_Byte(request1);
+	Roomba_Send_Byte(request2);
 }
 
 void roomba_init() {
