@@ -1,24 +1,29 @@
-#ifndef USB_UART_H_
-#define UART_H_
- 
-#include <stdint.h>
+#ifndef MY_UART_H
+#define MY_UART_H
 
-#define UART_BUFFER_SIZE 100			// size of Rx ring buffer.
-volatile uint8_t rmb_rx; 				// Flag to indicate uart received a byte
-volatile uint8_t bt_rx; 				// Flag to indicate uart received a byte
+/*Sources used:
+	http://www.appelsiini.net/2011/simple-usart-with-avr-libc
+	https://hekilledmywire.wordpress.com/2011/01/05/using-the-usartserial-tutorial-part-2/
+*/
+
+#define BAUD 19200
+#define F_CPU 16000000UL
+#include <avr/io.h>
+#include <stdio.h>
+#include <util/setbaud.h>
+#include <avr/sfr_defs.h>
 
 
-void RMB_UART_Init(void);
-void BTRemote_UART_Init(void);
-void BTBase_UART_Init(void);
 
-void RMB_UART_Send_Byte(uint8_t);
-void BT_UART_Send_Byte(uint8_t);
+void uart0_init(void);
+void uart1_init(void);
 
-char* RMB_UART_Recv(void);
-char* BT_UART_Recv(void);
+void uart0_sendbyte(uint8_t data);
+uint8_t uart0_recvbyte(void);
+void uart0_sendstr(char* input);
 
-void RMB_UART_Send_String(char*);
-void BT_UART_Send_String(char*);
- 
-#endif /* USB_UART_H_ */
+void uart1_sendbyte(uint8_t data);
+uint8_t uart1_recvbyte(void);
+void uart1_sendstr(char* input);
+
+#endif

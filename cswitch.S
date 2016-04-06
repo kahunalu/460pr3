@@ -1,9 +1,4 @@
 /*
- * Compile using:
- *   avr-gcc -c -O2 -mmcu=${CPU} -Wa,--gstabs -o switch.o switch.S
- */
-
-/*
   * Note:
   *
   * This code is based on "thread_swtch.S" by Brian S. Dean, and the
@@ -13,105 +8,103 @@
   *  Author:  Dr. Mantis Cheng, 28 September 2006.
   *
   *  ChangeLog: Modified by Alexander M. Hoole, October 2006.
-  *
-  *  !!!!!   This code has NEVER been tested.  !!!!!
-  *  !!!!!   Use at your own risk  !!!!
+  *             Modified by Kevin Gill and Chris Cook, February 2016
   */
 
 
 /* locations of well-known registers */
-SREG    = 0x3F
-SPH     = 0x3E
-SPL     = 0x3D
-EIND    = 0x3C
+SREG  = 0x3F
+SPH   = 0x3E
+SPL   = 0x3D
+EIND  = 0x3C
 
 /*
   * MACROS
   */
 ;
-; Push all registers and then the status register.
+; Push all registers and then the status and EIND registers.
 ; It is important to keep the order of SAVECTX and RESTORECTX  exactly
 ; in reverse. Also, when a new process is created, it is important to 
 ; initialize its "initial" context in the same order as SAVECTX.
-;	
-.macro	SAVECTX
-	push	r0
-	push	r1
-	push	r2
-	push	r3
-	push	r4
-	push	r5
-	push	r6
-	push	r7
-	push	r8
-	push	r9
-	push	r10
-	push	r11
-	push	r12
-	push	r13
-	push	r14
-	push	r15
-	push	r16
-	push	r17
-	push	r18
-	push	r19
-	push	r20
-	push	r21
-	push	r22
-	push	r23
-	push	r24
-	push	r25
-	push	r26
-	push	r27
-	push	r28
-	push	r29
-	push	r30
-	push	r31
-	in r31, EIND
-  push  r31
-  in  r31, SREG
-  push  r31
+;   
+.macro  SAVECTX
+    push    r0
+    push    r1
+    push    r2
+    push    r3
+    push    r4
+    push    r5
+    push    r6
+    push    r7
+    push    r8
+    push    r9
+    push    r10
+    push    r11
+    push    r12
+    push    r13
+    push    r14
+    push    r15
+    push    r16
+    push    r17
+    push    r18
+    push    r19
+    push    r20
+    push    r21
+    push    r22
+    push    r23
+    push    r24
+    push    r25
+    push    r26
+    push    r27
+    push    r28
+    push    r29
+    push    r30
+    push    r31
+    in  r16, SREG
+    push    r16
+  in  r31, EIND
+  push r31
 .endm
 ;
 ; Pop all registers and the status registers
 ;
-.macro	RESTORECTX
-  pop r31
-  out SREG,r31
+.macro  RESTORECTX
   pop r31
   out EIND,r31
-	pop	r31
-	pop	r30
-	pop	r29
-	pop	r28
-	pop	r27
-	pop	r26
-	pop	r25
-	pop	r24
-	pop	r23
-	pop	r22
-	pop	r21
-	pop	r20
-	pop	r19
-	pop	r18
-	pop	r17
-	pop	r16
-	pop	r15
-	pop	r14
-	pop	r13
-	pop	r12
-	pop	r11
-	pop	r10
-	pop	r9
-	pop	r8
-	pop	r7
-	pop	r6
-	pop	r5
-	pop	r4
-	pop	r3
-	pop	r2
-	pop	r1
-	pop	r0
+    pop r16
+    out SREG,r16
+    pop r31
+    pop r30
+    pop r29
+    pop r28
+    pop r27
+    pop r26
+    pop r25
+    pop r24
+    pop r23
+    pop r22
+    pop r21
+    pop r20
+    pop r19
+    pop r18
+    pop r17
+    pop r16
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop r11
+    pop r10
+    pop r9
+    pop r8
+    pop r7
+    pop r6
+    pop r5
+    pop r4
+    pop r3
+    pop r2
+    pop r1
+    pop r0
 .endm
 
         .section .text
@@ -143,7 +136,7 @@ Exit_Kernel:
           */
         SAVECTX
         /* 
-          * Now, we have saved the kernels context.
+          * Now, we have saved the kernel's context.
           * Save the current H/W stack pointer into KernelSp.
           */
         in   r30, SPL
@@ -151,7 +144,7 @@ Exit_Kernel:
         sts  KernelSp, r30
         sts  KernelSp+1, r31
         /*
-          * We are now ready to restore Cps context, i.e.,
+          * We are now ready to restore Cp's context, i.e.,
           * switching the H/W stack pointer to CurrentSp.
           */ 
         lds  r30, CurrentSp
@@ -159,8 +152,8 @@ Exit_Kernel:
         out  SPL, r30
         out  SPH, r31
         /*
-          * We are now executing in Cps stack.
-          * Note: at the bottom of the Cps context is its return address.
+          * We are now executing in Cp's stack.
+          * Note: at the bottom of the Cp's context is its return address.
           */
         RESTORECTX
         reti         /* re-enable all global interrupts */
@@ -174,7 +167,7 @@ Exit_Kernel:
   * timer interrupts yourself.
   *
   * Assumption: All interrupts are disabled upon entering here, and
-  *     we are still executing on Cps stack. The return address of
+  *     we are still executing on Cp's stack. The return address of
   *     the caller of Enter_Kernel() is on the top of the stack.
   *
   * void Enter_Kernel();
@@ -182,11 +175,11 @@ Exit_Kernel:
 Enter_Kernel:   
         /*
           * This is the "bottom" half of CSwitch(). We are still executing in
-          * Cps context.
+          * Cp's context.
           */
         SAVECTX
         /* 
-          * Now, we have saved the Cps context.
+          * Now, we have saved the Cp's context.
           * Save the current H/W stack pointer into CurrentSp.
           */
         in   r30, SPL
@@ -194,7 +187,7 @@ Enter_Kernel:
         sts  CurrentSp, r30
         sts  CurrentSp+1, r31
         /*
-          * We are now ready to restore kernels context, i.e.,
+          * We are now ready to restore kernel's context, i.e.,
           * switching the H/W stack pointer back to KernelSp.
           */ 
         lds  r30, KernelSp
@@ -202,7 +195,7 @@ Enter_Kernel:
         out  SPL, r30
         out  SPH, r31
         /*
-          * We are now executing in kernels stack.
+          * We are now executing in kernel's stack.
           */
        RESTORECTX
         /* 

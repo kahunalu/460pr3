@@ -2,36 +2,44 @@
 #define BAUD 19200
 #define AVERAGE_RUN 10
 
+#define DRIVE   137   // control wheels
+#define MOTORS  138   // turn cleaning motors on or off
+#define START   128   // Start serial command interface
+#define SAFE    131   // Enter safe mode
+#define DOCK    143   // force the Roomba to seek its dock.
+
 #include "uart.h"
-//#include "adc.h"
-//#include "roomba_driver.h"
+#include "adc.h"
 #include <avr/io.h>
+#include <util/delay.h>
 #include <stdio.h>
 #include "os.h"
 
-extern int bt_bytes;
-extern int bt_recv_eid;
-
-int laser_pin   = 13;
-
-int x     = 0;
-int y     = 0;
+int x_val       = 0;
+int y_val       = 0;
 int laser_val   = 0;
 
+/* Create loop function which executes while scheduler sleeps
+ *
+ */
+void loop(){
+  while(1){};
+}
+
 void auto_move(){
-  int event = Task_GetArg();
-  Event_Signal(event);
+  Event_Signal(Task_GetArg());
+  Task_Terminate();
 }
 
 void avoid_move(){
-  int event = Task_GetArg();
-  Event_Signal(event);
+  Event_Signal(Task_GetArg());
+  Task_Terminate();
 }
 
 
-/*void write_servo(){
-  int event = Task_GetArg();
-  
+void drive_roomba(){
+  // Execute move based on precident of available moves
+  /*  
   if(abs(curr_servo_x - servo_x) >= 10){
     if((curr_servo_x - servo_x)>0){
       curr_servo_x -= 10;
@@ -44,90 +52,35 @@ void avoid_move(){
     curr_servo_x = servo_x;
     myservo.writeMicroseconds(curr_servo_x);
   }
+  */
   
-  Event_Signal(event);
+  Event_Signal(Task_GetArg());
+  Task_Terminate();
 }
-*/
 
-/*void map_movement() {
-
-}*/
-
-
+//
 void write_laser(){
-  int event = Task_GetArg();
-
-  if(!laser_val) {
-    /* if the button was pressed shoot the laser */
-  }
-  Event_Signal(event);
+  Event_Signal(Task_GetArg());
+  Task_Terminate();
 }
 
 void man_move(){
-  int event = Task_GetArg();
-  bt_recv_eid     = Event_Init();
-  
+
+  /*
   for(;;) {
-    /* wait for next bluetooth packet */
-    Event_Wait(bt_recv_eid);
-    PORTC = 0x0F;
-    Task_Sleep(20); // sleep for 0.2 seconds
-
-
     char* curr = BT_UART_Recv();
     //RMB_UART_Send_String(curr);
-    PORTC = 0x00;
-    Task_Sleep(20); // sleep for 0.2 seconds
-    
-    Event_Signal(event);
   }
-  
+  */
+
+  Event_Signal(Task_GetArg());
+  Task_Terminate();
 }
 
-void read_bt() {
-  int event       = Task_GetArg();
-  bt_recv_eid     = Event_Init();
-  int read_index = 0;
-  int bytes_read = 0;
-  uint8_t *buff, curr;
-  uint8_t packet[10];
-  
-  for(;;) {
-
-    /* wait for next byte*/
-
-    Event_Wait(bt_recv_eid);
-    buff = BT_UART_Recv(); 
-
-    while(read_index != bt_bytes) {
-
-      curr = buff[read_index];
-
-      if(bytes_read == 0 && curr == 255) {
-        bytes_read++;
-
-      } else if(bytes_read != 0 && curr == 255) {
-
-        bytes_read = 0;
-        /* signal that packet is read */
-        Event_Signal(event);    
-
-      } else if(bytes_read != 0 && curr != 255) {
-
-        if(bytes_read == 1) x = curr;
-        if(bytes_read == 2) y = curr;
-        if(bytes_read == 3) laser_val = curr;
-        bytes_read++;
-
-      }
-
-      read_index = (read_index + 1) % UART_BUFFER_SIZE;
-    }
-
-
-    
-  }
-
+void packet_recv() {
+  uart0_sendbyte(uart1_recvbyte());
+  Event_Signal(Task_GetArg());
+  Task_Terminate();
 }
 
 /*
@@ -136,57 +89,95 @@ void read_bt() {
  *
  */
 void action(){
-  //int avoid_move_eid  = Event_Init();
-  int man_move_eid    = Event_Init();
+  // Create the events which correspond with each task
   int packet_recv_eid = Event_Init();
-  int mapped_eid = Event_Init();
+
+  int avoid_move_eid  = Event_Init();
+  int auto_move_eid   = Event_Init();
+  int man_move_eid    = Event_Init();
   
+  int drive_roomba_eid= Event_Init();
   int write_laser_eid = Event_Init();
-  //int write_servo_eid = Event_Init();
-
-  //Task_Create(read_bt, 2, packet_recv_eid);
-
+  
+  // Begin looping through
   for(;;){
-    //Task_Create(avoid_move, 2, avoid_move_eid);
+    // Receive Packet
+    Task_Create(packet_recv, 2, packet_recv_eid);
+    Event_Wait(packet_recv_eid);
+
+    // Detect available moves
+    Task_Create(avoid_move, 2, avoid_move_eid);
+    Task_Create(auto_move, 2, auto_move_eid);
+    Task_Create(man_move, 2, man_move_eid);
     
-    //Event_Wait(avoid_move_eid);
-    //Event_Wait(packet_recv_eid);
-    Event_Wait(bt_recv_eid);
+    // Wait until all moves are considered
+    Event_Wait(avoid_move_eid);
+    Event_Wait(auto_move_eid);
+    Event_Wait(man_move_eid);
 
+    // Drive the roomba and write to the laser
+    Task_Create(drive_roomba, 3, drive_roomba_eid);
+    Task_Create(write_laser, 3, write_laser_eid);
 
-    /*Task_Create(map_movement, 2, mapped_eid);
-    Event_Wait(mapped_eid);
-    Task_Create(man_move_eid, 2, man_move_eid);
-    Event_Wait(man_move_eid);*/
-
-    //Task_Create(write_servo, 3, write_servo_eid);
-    //Task_Create(write_laser, 3, write_laser_eid);
+    // Wait until the roomba has moved and shot the laser
+    Event_Wait(drive_roomba_eid);
+    Event_Wait(write_laser_eid);
+    _delay_ms(1000);
   }
+
+  Task_Terminate();
 }
 
+void roomba_init() {
+  // Initialize BDC pin
+  DDRC = 0x80;
 
-/* Create loop function which executes while scheduler sleeps
- *
- */
-void loop(){
-  for(;;);
+  // Flash the BDC pin 3 times to set the Baud rate to 19200
+  PORTC = 0x80;
+  _delay_ms(2500);
+
+  PORTC = 0x00;
+  _delay_ms(300);
+
+  PORTC = 0x80;
+  _delay_ms(300);
+
+  PORTC = 0x00;
+  _delay_ms(300);
+
+  PORTC = 0x80;
+  _delay_ms(300);
+
+  PORTC = 0x00;
+  _delay_ms(300);
+
+  PORTC = 0x80;
+
+  // Send the start command to the roomba
+  uart0_sendbyte(START);
+  _delay_ms(200);
+  
+  // Enter the safe mode
+  uart0_sendbyte(SAFE);
 }
-
 
 /*  a_main
  * 
  *    Applications main function which initializes pins, and tasks
  */
-void a_main(){
-  //RMB_UART_Init();
-  BTRemote_UART_Init(); 
+void a_main(){  
+  // Initialize Uart 0 which is used for the roomba
+  uart0_init();
+  _delay_ms(100);
 
-  roomba_init(); 
-  
-  DDRC = 0x0F;
+  // Initialize Uart 1 which is used for bluetooth
+  uart1_init();
+  _delay_ms(100);
+
+  // Initialize the Roomba connection
+  roomba_init();
 
   Task_Create(action, 1, 0);
-  Task_Create(loop, 8, 0);  
 
   Task_Terminate();
 }
