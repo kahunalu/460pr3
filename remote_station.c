@@ -15,9 +15,13 @@
 #include <stdio.h>
 #include "os.h"
 
-int x_val       = 0;
-int y_val       = 0;
-int laser_val   = 0;
+volatile int servo_x   = 0;
+volatile int servo_y   = 0;
+volatile int laser_val = 0;
+
+volatile int auto_mode        = 0;
+volatile int man_move_avail   = 0;
+volatile int avoid_move_avail = 0;
 
 /* Create loop function which executes while scheduler sleeps
  *
@@ -26,59 +30,87 @@ void loop(){
   while(1){};
 }
 
+void control_roomba(int velocity, int radius) {
+  write_serial(DRIVE);
+  write_serial(HIGH_BYTE(velocity));
+  write_serial(LOW_BYTE(velocity));
+  write_serial(HIGH_BYTE(radius));
+  write_serial(LOW_BYTE(radius));
+}
+
 void auto_move(){
-  Event_Signal(Task_GetArg());
-  Task_Terminate();
+
 }
 
 void avoid_move(){
-  Event_Signal(Task_GetArg());
-  Task_Terminate();
-}
 
-
-void drive_roomba(){
-  // Execute move based on precident of available moves
-  /*  
-  if(abs(curr_servo_x - servo_x) >= 10){
-    if((curr_servo_x - servo_x)>0){
-      curr_servo_x -= 10;
-      myservo.writeMicroseconds(curr_servo_x);
-    }else{
-      curr_servo_x += 10;
-      myservo.writeMicroseconds(curr_servo_x);
-    }
-  }else{
-    curr_servo_x = servo_x;
-    myservo.writeMicroseconds(curr_servo_x);
-  }
-  */
-  
-  Event_Signal(Task_GetArg());
-  Task_Terminate();
-}
-
-//
-void write_laser(){
-  Event_Signal(Task_GetArg());
-  Task_Terminate();
 }
 
 void man_move(){
 
-  /*
-  for(;;) {
-    char* curr = BT_UART_Recv();
-    //RMB_UART_Send_String(curr);
+}
+
+void control_roomba(){
+  if(avoid_move_avail){
+    avoid_move();
+  }else if(man_move_avail){
+    man_move();
+  }else{
+    auto_move();
   }
-  */
 
   Event_Signal(Task_GetArg());
   Task_Terminate();
 }
 
 void packet_recv() {
-  uart0_sendbyte(uart1_recvbyte());
+  char values[50];
+  char curr;
+  volatile int bytes = -1;
+
+  for(;;){  
+    curr = uart1_recvbyte();
+
+    if(bytes == -1 && curr=='#'){
+      bytes = bytes + 1;
+    }else if(bytes != -1 && curr!='#'){
+      values[bytes] = curr;
+      bytes = bytes + 1;
+    }else if(bytes != -1 && curr=='#'){
+      values[bytes] = '\0';
+      break;
+    }    
+  }
+
+  char *token;
+  const char s[2] = "-";
+
+  // Tokenize and convert values to corresponding values
+  token = strtok(values, s);
+  servo_x = atoi(token);
+  
+  token = strtok(NULL, s);
+  servo_y = atoi(token);
+
+  token = strtok(NULL, s);
+  laser_val = atoi(token);
+
+  // If the value is greater than a range 
+  if(servo_x<300||servo_x<700||servo_y<300||servo_y>700){
+    man_move_avail = 1;
+    auto_mode      = 0;
+  }else{
+    man_move_avail = 0;
+    auto_mode      = 1;
+  }
+
+  // Fire laser if signaled
+  if(laser_val<100){
+    PORTC |= 0x40;
+  }else{
+    PORTC &= 0x80;
+  }
+  
   Event_Signal(Task_GetArg());
   Task_Terminate();
 }
@@ -91,13 +123,7 @@ void packet_recv() {
 void action(){
   // Create the events which correspond with each task
   int packet_recv_eid = Event_Init();
-
-  int avoid_move_eid  = Event_Init();
-  int auto_move_eid   = Event_Init();
-  int man_move_eid    = Event_Init();
-  
-  int drive_roomba_eid= Event_Init();
-  int write_laser_eid = Event_Init();
+  int control_roomba_eid= Event_Init();
   
   // Begin looping through
   for(;;){
@@ -105,24 +131,11 @@ void action(){
     Task_Create(packet_recv, 2, packet_recv_eid);
     Event_Wait(packet_recv_eid);
 
-    // Detect available moves
-    Task_Create(avoid_move, 2, avoid_move_eid);
-    Task_Create(auto_move, 2, auto_move_eid);
-    Task_Create(man_move, 2, man_move_eid);
-    
-    // Wait until all moves are considered
-    Event_Wait(avoid_move_eid);
-    Event_Wait(auto_move_eid);
-    Event_Wait(man_move_eid);
-
     // Drive the roomba and write to the laser
-    Task_Create(drive_roomba, 3, drive_roomba_eid);
-    Task_Create(write_laser, 3, write_laser_eid);
+    Task_Create(control_roomba, 2, control_roomba_eid);
+    Event_Wait(control_roomba_eid);
 
-    // Wait until the roomba has moved and shot the laser
-    Event_Wait(drive_roomba_eid);
-    Event_Wait(write_laser_eid);
-    _delay_ms(1000);
+    _delay_ms(100);
   }
 
   Task_Terminate();
@@ -130,7 +143,7 @@ void action(){
 
 void roomba_init() {
   // Initialize BDC pin
-  DDRC = 0x80;
+  DDRC = 0xC0;
 
   // Flash the BDC pin 3 times to set the Baud rate to 19200
   PORTC = 0x80;

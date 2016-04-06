@@ -13,7 +13,7 @@ void uart0_init(void) {
 }
 
 void uart1_init(void) {
-  UBRR1 = BT_UBRR;
+  UBRR1 = 103;
   
   UCSR1A &= ~(_BV(U2X1));
 

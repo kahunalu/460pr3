@@ -9,61 +9,63 @@
 #include "uart.h"
 #include <string.h>
 
-int poll_count  = 0;
-int sensor_pin  = 0; 
+volatile int poll_count  = 0;
 
-uint8_t VRx_avg[10] = {131,131,131,131,131,131,131,131,131,131};
-uint8_t VRy_avg[10] = {131,131,131,131,131,131,131,131,131,131};
-int x_sum = 1310;
-int y_sum = 1310;
+volatile int VRx_avg[10] = {0,0,0,0,0,0,0,0,0,0};
+volatile int VRy_avg[10] = {0,0,0,0,0,0,0,0,0,0};
+volatile int LS_avg[10]  = {0,0,0,0,0,0,0,0,0,0};
+ 
+volatile int servo_x       = 2;
+volatile int servo_y       = 3;
+volatile int laser_val     = 4;
 
-uint8_t x_val       = 0;
-uint8_t y_val       = 0;
-uint8_t laser_val   = 0;
 
-uint8_t smooth_read(int pin, uint8_t *avg, int *sum) {
-  int smoothed_val = 0;
-  *sum = *sum - avg[poll_count];
-
-  /* shift 10bit reading right twice to get an 8-bit reading for UART communication */
-  avg[poll_count] = (readadc(pin)>>2);
-  *sum = *sum + avg[poll_count];
-  /* Then divide by 10 */
-  if(*sum>0) {
-    smoothed_val = *sum/10;
+int read(int pin, int avg[]) {
+  avg[poll_count] = readadc(pin);
+  int sum = 0;
+  int i   = 0;
+  for(i = 0; i < AVERAGE_RUN; i++){
+    sum += avg[i];
   }
+  return (sum/AVERAGE_RUN);
+}
 
+
+void read_joystick(){
+  servo_x = readadc(0);
+  servo_y = readadc(1);
+  laser_val = readadc(2);
+ 
   poll_count++;
-
   if(poll_count == AVERAGE_RUN){
     poll_count = 0;
   }
 
-  return (uint8_t)smoothed_val;
-}
-
-void read_joystick(){
-  // PORTB |= (1<<PB7);
-  // x = (readadc(2)>>2);
-  // if(x == 255) {
-  //   x == 254;
-  // }
-  // //x = smooth_read(2, VRx_avg, &x_sum);
-  // y = (readadc(3)>>2);
-  // if(y == 255) {
-  //   y == 254;
-  // }
-  // //y = smooth_read(3, VRy_avg, &y_sum);
-  // laser_val = (readadc(4)>>2);
-
-  // PORTB &= ~(1<<PB7);
-     
   Event_Signal(Task_GetArg());
   Task_Terminate();
 }
 
+
 void write_bt(){
-  uart1_sendbyte((char)1);
+  char servo_x_str[10];
+  char servo_y_str[10];
+  char laser_val_str[10];
+
+  // Weird issue where servo x is garbage when first read in, thus read in twice
+  sprintf(servo_x_str, "%d", servo_x);
+  sprintf(servo_x_str, "%d", servo_x);
+  sprintf(servo_y_str, "%d", servo_y);
+  sprintf(laser_val_str, "%d", laser_val);
+
+  // Send formatted packet
+  uart1_sendbyte('#');
+  uart1_sendstr(&servo_x_str[0]);
+  uart1_sendbyte(0x00);
+  uart1_sendstr(&servo_y_str[0]);
+  uart1_sendbyte(0x00);
+  uart1_sendstr(&laser_val_str[0]);
+  uart1_sendbyte('#');
+
   Event_Signal(Task_GetArg());
   Task_Terminate();
 }
@@ -78,7 +80,7 @@ void action(){
 
     Task_Create(write_bt, 2, write_bt_eid);
     Event_Wait(write_bt_eid);
-    _delay_ms(1000);
+    _delay_ms(200);
   }
 }
 
@@ -86,6 +88,9 @@ void a_main(){
   InitADC();
 
   // Initialize Uart 1 which is used for bluetooth
+  uart0_init();
+  _delay_ms(100);  
+
   uart1_init();
   _delay_ms(100);  
 
