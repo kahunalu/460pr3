@@ -1,6 +1,8 @@
 #define F_CPU 16000000UL
 #define BAUD 19200
 #define AVERAGE_RUN 10
+#define THRESHOLD 10
+
 
 #define DRIVE       137   // control wheels
 #define MOTORS      138   // turn cleaning motors on or off
@@ -112,29 +114,23 @@ void man_move(){
 void control_roomba(){
   if(avoid_move_avail){
     avoid_move();
-    uart0_sendstr("Avoid move\n");
   }else if(man_move_avail){
     man_move();
-    uart0_sendstr("man move\n");
   }else{
     auto_move();
-    uart0_sendstr("auto move\n");
   }
 
   Event_Signal(Task_GetArg());
   Task_Terminate();
 }
 
-void collision_detect(){
-  roomba_data_request(7, 13);
+void hit_detection(){
+  int light_level = readadc(0);
   
-  bump_detected = uart0_recvbyte();
-  _delay_ms(100);
-  wall_detected = uart0_recvbyte();
-  _delay_ms(100);
-
-  if((bump_detected >= 1 && bump_detected <= 3) || wall_detected ){
-    avoid_move_avail = 1;
+  if(light_level > THRESHOLD){
+    while(1){
+      PORTC = 0x20;
+    }
   }
 
   Event_Signal(Task_GetArg());
@@ -201,17 +197,16 @@ void packet_recv() {
 void action(){
   // Create the events which correspond with each task
   int packet_recv_eid     = Event_Init();
-  int collision_detect_eid= Event_Init();
+  int hit_detect_eid= Event_Init();
   int control_roomba_eid  = Event_Init();
   
   // Begin looping through
   for(;;){
     // Receive Packet
     Task_Create(packet_recv, 2, packet_recv_eid);
+    Task_Create(hit_detection, 2, hit_detect_eid);
     
-    //REMOVE COMMENTS FOR EXPERIMENTAL AVOIDANCE CODE
-    //Task_Create(collision_detect, 2, collision_detect_eid);
-    //Event_Wait(collision_detect_eid);
+    Event_Wait(hit_detect_eid);
     Event_Wait(packet_recv_eid);
 
     // Drive the roomba and write to the laser
@@ -226,7 +221,7 @@ void action(){
 
 void roomba_init() {
   // Initialize BDC pin
-  DDRC = 0xC0;
+  DDRC = 0xE0;
 
   // Flash the BDC pin 3 times to set the Baud rate to 19200
   PORTC = 0x80;
@@ -261,7 +256,10 @@ void roomba_init() {
  * 
  *    Applications main function which initializes pins, and tasks
  */
-void a_main(){  
+void a_main(){
+  //Begin the ADC for the hit detection
+  InitADC();
+
   // Initialize Uart 0 which is used for the roomba
   uart0_init();
   _delay_ms(100);
